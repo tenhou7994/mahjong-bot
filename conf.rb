@@ -1,3 +1,6 @@
-BOT_TOKEN = '225100593:AAFgynPLbwvn-ONGUVu1aQYbC6MhCHxVAno'
-DB_FILE = 'mahjong-bot.db'
-SERVER_URL = 'https://52.59.5.172/_callback_mj'
+BOT_TOKEN = ''
+DB_FILE = ''
+SERVER_URL = ''
+GROUP_CHAT_ID = 1
+CALLBACK_PORT = 1
+CALLBACK_URL = ''

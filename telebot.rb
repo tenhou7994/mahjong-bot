@@ -1,93 +1,89 @@
+# encoding: utf-8
+
 require 'rest-client'
-require 'sinatra'
+require 'sinatra/base'
 require 'json'
-load 'conf.rb'
-load 'sqlpart.rb'
-load 'tenhoupart.rb'
+require 'time'
+require 'thread'
 
-$db = DBC.new
+require_relative 'conf'
+require_relative 'sqlpart'
+require_relative 'tenhoupart'
+require_relative 'router'
+require_relative 'tenhou-bot'
 
-set :port, 8888
 
-response = RestClient.post("https://api.telegram.org/bot#{BOT_TOKEN}/setWebhook", {:url => SERVER_URL, :certificate => File.new("server.crt", 'rb')})
 
-print response.code
+class Teleserver < Sinatra::Application
 
-post '/_callback_mj' do
-  update = JSON.parse request.body.read
-  route_message update["message"]
-  200
-end
+  set :port, CALLBACK_PORT
 
-helpers do
-  def route_message(message)
-    chat = message["chat"]
-    user = message["from"]
-    case message["text"]
-      when /\/hlon\s?.*/
-        if user["username"].nil?
-          text = "Please set your username in telegram profile."
-          RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-        else
-          if $db.get_users(c_id: user["id"]).size > 0
-            $db.update_user user["id"], user["username"], hl_s:1
-          else
-            $db.add_user user["id"], user["username"]
-          end
-        end
+  RestClient.post("https://api.telegram.org/bot#{BOT_TOKEN}/setWebhook", {:url => SERVER_URL, :certificate => File.new("server.crt", 'rb')})
 
-      when /\/hloff\s?.*/
-        if user["username"].nil?
-          text = "You have no username, highlights disabled by default."
-          RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-        else
-          if $db.get_users(c_id: user["id"]).size > 0
-            $db.update_user user["id"], user["username"], hl_s:0
-          else
-            $db.add_user user["id"], user["username"], hl_s:0
-          end
-        end
-
-      when /\/mahjong\s?.*/
-        text = "@#{user["username"]} призывает нажать кнопку в лобби tenhou.net/0?L7994 (tenhou.net/3/beta.html?L7994) \n"
-        $db.get_users(hl_s:1).each do |row|
-          text += "@#{row[0]} | "
-        end
-        RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-
-      when /\/me\s.*/
-        name = message["text"].gsub(/\/me\s/,'')
-        if $db.get_users(c_id: user["id"]).size > 0
-          $db.update_user user["id"], user["username"], t_id:name
-        else
-          $db.add_user user["id"], user["username"], t_id:name
-        end
-        text = "Никнейм #{name} на tenhou ассоциирован с Вами. Теперь Вы можете воспользоваться командой /stat {lobby_number}"
-        RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-
-      when /\/stat\s\d*/
-        u_name = $db.get_users(c_id: user["id"])
-        lobby = message["text"].gsub!(/\D/,'')
-        if u_name.size > 0
-          text = get_stat(u_name[0][1], lobby)
-          RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-        end
-      
-      when /\/whois\s.*/
-        t_name = message["text"].gsub(/\/whois\s/,'')
-        u_name = $db.get_users(t_id: t_name)
-        if u_name.size > 0
-          text = "#{t_name} известен как"
-          u_name.each do |row|
-            text += " @#{row[0]}|"
-          end
-        else
-          text = "Я не знаю кто это. Если вы опознали себя, воспользуйтесь командой '/me #{t_name}' ."
-        end
-        RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat["id"], :text => text}}
-      
-      else
-    end
-
+  post CALLBACK_URL do
+    update = JSON.parse request.body.read
+    message = update["message"].nil? ? update["edited_message"] : update["message"]
+    $router.route_message message
+    200
   end
+
 end
+
+db = DBC.new
+$queue_from_chat = Queue.new
+$router = Router.new db
+
+$router.default_chat_id = GROUP_CHAT_ID
+
+threads = Array.new
+threads << Thread.new do
+  Teleserver.run!
+end
+
+threads << Thread.new do
+
+  tb = TenhouBot.new '7994bot', lobby: '7994'
+
+  tb.from_chat = $queue_from_chat
+
+  tb.start
+end
+
+threads << Thread.new do
+
+  QueueFromThread.new $router, $queue_from_chat
+
+end
+
+threads << Thread.new {
+  sleep 1 until Teleserver.running?
+
+  def shut_down
+    RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/setWebhook"
+    $stdout << "\n set webhook to null\n"
+    response = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/getUpdates"
+    $stdout << "get updates \n"
+    update = JSON.parse response.body
+    last_update = update["result"].size > 0 ? update["result"].last : nil
+    if last_update.nil?
+      $stdout << "there is no updates\n"
+    else
+      $stdout << "requests offset\n"
+      RestClient.get("https://api.telegram.org/bot#{BOT_TOKEN}/getUpdates?offset=#{last_update['update_id'].to_i + 1}") 
+    end
+  end
+
+  # Trap ^C
+  Signal.trap("INT") {
+    shut_down
+    exit
+  }
+
+  # Trap `Kill `
+  Signal.trap("TERM") {
+    shut_down
+    exit
+  }
+}
+
+threads.each { |thread| thread.join }
