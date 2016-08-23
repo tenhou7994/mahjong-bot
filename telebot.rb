@@ -42,11 +42,11 @@ end
 
 threads << Thread.new do
 
-  tb = TenhouBot.new '7994bot', lobby: '7994'
+  tr = TenhouRunner.new '7994bot', lobby: '7994'
 
-  tb.from_chat = $queue_from_chat
+  tr.bot.from_chat = $queue_from_chat
 
-  tb.start
+  tr.start
 end
 
 threads << Thread.new do

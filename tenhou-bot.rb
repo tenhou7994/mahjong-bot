@@ -1,6 +1,42 @@
 require_relative 'tenhou-client'
 require 'nokogiri'
 require 'open-uri'
+require 'thread'
+
+
+class TenhouRunner
+  attr_accessor :bot
+
+  def initialize(login, lobby: nil)
+    @bot = TenhouBot.new login, lobby: lobby
+    @logger = @bot.client.logger
+  end
+
+  def start
+    @bot.start
+    @logger.info 'New Pinging thread starting'
+    ping_thread = PingThread.new @bot
+    @logger.info 'New Receiving thread starting'
+    ReceiveThread.new @bot
+
+  rescue DisconnectedException
+    @bot.start
+    @logger.warn 'Restarting pinging thread'
+    ping_thread.run
+  rescue => err
+    @logger.fatal err
+    raise
+  end
+
+  # def queue_receiving
+  #   if not @queue_thread or not @queue_thread.alive?
+  #     thread = QueueThread.new self
+  #     thread.run
+  #     @queue_thread = thread
+  #   end
+  # end
+
+end
 
 class TenhouBot
   attr_reader :client
@@ -15,34 +51,11 @@ class TenhouBot
   def start
     @client.connect
     @client.login @login
-    start_pinging
-    start_receiving
+
     if @lobby
       @client.connect_lobby @lobby
     end
   end
-
-  def start_pinging
-    if not @ping_thread or not @ping_thread.alive?
-      thread = PingThread.new self
-      @ping_thread = thread
-    end
-  end
-
-  def start_receiving
-    if not @receive_thread or not @receive_thread.alive?
-      thread = ReceiveThread.new self
-      @receive_thread = thread
-    end
-  end
-
-  # def queue_receiving
-  #   if not @queue_thread or not @queue_thread.alive?
-  #     thread = QueueThread.new self
-  #     thread.run
-  #     @queue_thread = thread
-  #   end
-  # end
 
   def handle_received(received)
     if received =~ /^<HELO/
@@ -67,6 +80,45 @@ class TenhouBot
   end
 end
 
+class ReceiveThread < Thread
+  def initialize(bot)
+    @bot = bot
+    super{ self.run }
+  end
+
+  def run
+    while true
+      @bot.client.receive.each do |recieved|
+        @bot.handle_received recieved
+      end
+    end
+  rescue => err
+    @bot.client.logger.error err
+  end
+
+end
+
+class PingThread < Thread
+  def initialize(bot)
+    @bot = bot
+    self.abort_on_exception = true
+    super{ self.run }
+  end
+
+  def run
+    while true
+      @bot.client.ping
+      sleep 5
+    end
+  rescue Errno::EPIPE
+    @bot.client.logger.warn "Tenhou ping failed"
+    raise DisconnectedException
+  rescue => err
+    @bot.client.logger.fatal err
+    raise
+  end
+end
+
 # class QueueThread < Thread
 #   def initialize(bot)
 #     @bot = bot
@@ -83,42 +135,3 @@ end
 #     @bot.client.logger.error err
 #   end
 # end
-
-class ReceiveThread < Thread
-  def initialize(bot)
-    @bot = bot
-    super{ self.run }
-  end
-
-  def run
-    while true
-      @bot.client.receive.each do |recieved|
-        @bot.handle_received recieved
-      end
-    end
-  rescue => err
-    @bot.client.logger.error err
-  end
-end
-
-class PingThread < Thread
-  def initialize(bot)
-    @bot = bot
-    super{ self.run }
-  end
-
-  def run
-    while true
-      @bot.client.ping
-      sleep 5
-    end
-  rescue Errno::EPIPE
-    @bot.client.logger.warn "Tenhou ping failed"
-    @bot.start
-    sleep 5
-  rescue => err
-    @bot.client.logger.fatal err
-    raise
-  end
-
-end

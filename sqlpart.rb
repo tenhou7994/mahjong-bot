@@ -40,6 +40,9 @@ class DBC
       query = "select username, hl_status from members where tenhou_id = '#{t_id}';"
     elsif c_id
       query = "select username, tenhou_id, hl_status from members where chat_id = #{c_id};"
+      if c_id == 'all'
+        query = 'select username from members where username is not null;'
+      end
     elsif hl_s
       query = "select username, chat_id from members where hl_status = #{hl_s};"
     end

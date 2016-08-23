@@ -34,11 +34,17 @@ class Router
       when /\/me\s.*/
         bind_name
 
+      when /^\/stat3\s?$/
+        count_self_stat 3
+
+      when /\/stat3\s(\d{1,4}|\w*)(\s.*\s?)?/
+        count_hard_stat $1, $2, 3
+
       when /^\/stat\s?$/
-        count_self_stat
+        count_self_stat 4
 
       when /\/stat\s(\d{1,4}|\w*)(\s.*\s?)?/
-        count_hard_stat $1, $2
+        count_hard_stat $1, $2, 4
 
       when /\/whois\s.*/
         say_who
@@ -55,6 +61,10 @@ class Router
       when /\/help\s?.*/
         send_help
 
+      when /\/list/
+        if @user['id'] == 53783180
+          get_users_from_db
+        end
       else
     end
   rescue => err
@@ -141,18 +151,18 @@ class Router
     send_message text
   end
 
-  def count_self_stat
+  def count_self_stat(man)
     user = @db.get_users(c_id: @user['id'])
     if user.size > 0
       player = user[0][1]
-      text = get_stat player
+      text = get_stat player, man
     else
       text = 'You have no tenhou name binded to you. Use /me {tenhou_name} command first.'
     end
     send_message text
   end
 
-  def count_hard_stat(lobby_string, player)
+  def count_hard_stat(lobby_string, player, man)
     if player.nil? or player.gsub!(/^\s/, '').gsub!(/\s$/, '') == ''
       u_name = @db.get_users(c_id: @user['id'])
       u_name.size > 0 ? player = u_name[0][1] : player = nil
@@ -160,7 +170,7 @@ class Router
     lobby_string =~ /\d{1,4}/ ? lobby = lobby_string : dan_check = lobby_string
     dan_strings = %w(general dan perdan upperdan gigadan phoenix alldan)
     if player and (dan_check.nil? or dan_strings.include? dan_check)
-      text = get_stat(player, lobby: lobby, dan: dan_check)
+      text = get_stat(player, man, lobby: lobby, dan: dan_check)
       send_message text
     end
   end
@@ -239,6 +249,14 @@ class Router
   def send_message(text, chat: nil)
     chat ||= @chat['id']
     RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage", {:params => {:chat_id => chat, :text => text}}
+  end
+
+  def get_users_from_db
+    text = ''
+    (@db.get_users c_id: 'all').each do |row|
+      text += "@#{row[0]}\n"
+    end
+    send_message text
   end
 
 end
