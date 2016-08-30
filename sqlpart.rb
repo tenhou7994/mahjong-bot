@@ -43,12 +43,14 @@ class DBC
     if t_id
       query = "select username, hl_status from members where tenhou_id = '#{t_id}';"
     elsif c_id
-      query = "select username, tenhou_id, hl_status from members where chat_id = #{c_id};"
       if c_id == 'all'
         query = 'select username from members where username is not null;'
+      else
+        query = "select username, tenhou_id, hl_status from members where chat_id = #{c_id};"
       end
     elsif hl_s
       query = "select username, chat_id from members where hl_status = #{hl_s};"
+    else return
     end
     @db.execute query
   end
@@ -73,8 +75,19 @@ class DBC
     @db.execute query
   end
 
-  def add_link(id, link)
+  def add_link(id, link, update_type: 'last')
     desc = 'no description'
+    case update_type
+      when 'last'
+        last_id = @db.get_last_link_id || 0
+        id = 1 + last_id
+      when 'insert'
+        update_link_id id, 'right'
+      when 'update'
+        desc = (get_link id)[2]
+      else
+        return
+    end
     query = "insert or replace into links values (#{id}, '#{link}', '#{desc}');"
     @db.execute query
   end
@@ -84,18 +97,29 @@ class DBC
     @db.execute query
   end
 
-  def update_link_id(id)
-    query = "update links set id=#{id-1} where id=#{id};"
-    @db.execute query
+  def update_link_id(id, side)
+    arr = get_links(sort_order: 'desc').take_while do |link|
+      link[0] >= id
+    end
+    arr.collect! {|link| link[0]}
+    if side == 'left'
+      arr.pop
+      arr.reverse!
+    end
+    arr.compact.each do |i|
+      new_id = side == 'left' ? i - 1 : i + 1
+      query = "update links set id=#{new_id} where id=#{i};"
+      @db.execute query
+    end
   end
 
   def get_link(id)
     query = "select id from links where id=#{id};"
-    @db.execute query
+    @db.get_first_value query
   end
 
-  def get_links
-    query = 'select * from links order by id asc;'
+  def get_links(sort_order: 'asc')
+    query = "select * from links order by id #{sort_order};"
     @db.execute query
   end
 
@@ -117,14 +141,7 @@ class DBC
   def delete_link(id)
     query = "delete from links where id=#{id};"
     @db.execute query
-    arr = get_links.collect do |link|
-      if link[0] > id
-        link[0]
-      end
-    end
-    arr.compact.each do |i|
-      update_link_id i
-    end
+    update_link_id id, 'left'
   end
 
   def add_hint(hint)

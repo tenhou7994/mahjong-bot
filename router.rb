@@ -27,6 +27,7 @@ class Router
   end
 
   def route_message(message)
+    @logger.info "Incoming json: #{message}"
     @chat = message['chat']
     @user = message['from']
     @message_text = message['text']
@@ -84,6 +85,9 @@ class Router
 
       when /^\/add_link(\s\d+)?(\s(https?:\/\/)?([\-\w\.]+)\.([\-\da-z]{2,20}\.?)(\/[\w\.]*)*\/?(.*)?)$/
         add_link $1, $2 if user_admin?
+
+      when /^\/insert_link(\s\d+)?(\s(https?:\/\/)?([\-\w\.]+)\.([\-\da-z]{2,20}\.?)(\/[\w\.]*)*\/?(.*)?)$/
+        insert_link $1, $2 if user_admin?
 
       when /^\/link_desc(\s\d+)(\s.+)$/
         add_desc $1, $2 if user_admin?
