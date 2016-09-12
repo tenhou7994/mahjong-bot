@@ -238,7 +238,8 @@ module Help_mj
     text += "/stat {(general/dan/upperdan/gigadan/alldan) | (lobby_number)} (tenhou-name) — Получить статистику для указаного лобби(для указанного тенхо-ника, если не указано - для привязанного)\n/stat3 - То же, что и /stat для игры на троих\n"
     text += "/set_sch (1-7) {HH:MM - HH:MM} — Установить (день недели, если не указан то для всех дней) расписание нотификаций для /mahjong\n/my_sch — Посмотреть свое расписание нотификаций\n"
     text += "/links — Список полезных ссылок, если вы хотите видеть тут свою ссылку - обратитесь к админу группы\n"
-    text += "/how_to_win_maajan — Получить ответ на вопрос \"Как выиграть в маджонг?\" от мудрого Бота."
+    text += "/how_to_win_maajan — Получить ответ на вопрос \"Как выиграть в маджонг?\" от мудрого Бота.\n"
+    text += "/add_bot - Попросить бота нажать кнопочку."
     send_message text
   end
 
@@ -250,5 +251,86 @@ module Help_mj
     text += "/hint {text} - Добавить текст для вывода при использовании /how_to_win_maajan (можно вводить несколько, разделяются переводом строки)\n"
     text += "/list - Вывести известных боту людей из телеграма. (аккуратно, не используйте в чате без не обходимости, хайлайтит всех)"
     send_message text
+  end
+
+  def welcome
+    username = @message['new_chat_member']['username'] ? '@' + @message['new_chat_member']['username'] : @message['new_chat_member']['first_name']
+    send_message "Привет #{username}! Добро пожаловать в маджонгач. Снова."
+    set_highlights_on
+    send_help
+  end
+end
+
+module Bot_mj
+  def add_bot(no_aka: 0, kuitan: 0, fast: 0, hanchan: 1, threesome: 0, lobby: 7994)
+    @rules.each do |rule|
+      case rule
+        when /^(!)?aka$/
+          no_aka = 1 if $1
+        when /^(!)?kuitan$/
+          kuitan = 1 if $1.nil?
+        when /^(!)?hanchan$/
+          hanchan = 0 if $1
+        when /^(!)?three$/
+          threesome = 1 if $1.nil?
+        when /^(!)?fast$/
+          fast = 1 if $1.nil?
+        when /^(0|\d{4})$/
+          lobby = $1.to_i
+        else
+      end
+    end
+
+    button = 1 + (kuitan*2) + (no_aka*4) + (hanchan*8) + (threesome*16) + (fast*64)
+    params_hash = {:lobby => lobby, :type => button, :name => 'ID582D7C90-ABf9JQAe'}
+    resp = RestClient.get "http://mahjongbot.herokuapp.com/startBot", {:params => params_hash}
+    @bot_id = (JSON.parse resp.body)['id']
+    @logger.info "New bot with ID - #{@bot_id}, with params #{params_hash}."
+    send_message "Бот ожидает игры в лобби #{lobby}."
+  end
+
+  def bot_offline?
+    if @bot_id.nil?
+      return true
+    end
+    resp = RestClient.get "http://mahjongbot.herokuapp.com/info", {:params => {:id => @bot_id}}
+    status = (JSON.parse resp.body)['status']
+    if status == 'error'
+      true
+    else
+      false
+    end
+  end
+
+  def add_bot_by_people
+    if bot_offline?
+      if @timer_bot.nil? || @timer_bot.possible?
+        @timer_bot = BotTimerThread.new 600, @user['id'], @chat['id']
+      else
+        send_message "Бот уже ожидает подтверждения."
+        return
+      end
+      @rules = @message_text.split.uniq
+    else
+      send_message 'Бот уже ожидает/играет, к сожалению пока адекватно играть может только один бот.'
+    end
+  end
+
+  def send_bot_reply_keyboard
+    if bot_offline?
+      buttons = [
+          [{:text => "/run_bot !hanchan kuitan !aka"}, {:text => "/run_bot kuitan !aka"}],
+          [{:text => "/run_bot !hanchan !aka"}, {:text => "/run_bot !aka"}],
+          [{:text => "/run_bot !hanchan"}, {:text => "/run_bot"}],
+          [{:text => "/run_bot !hanchan fast"}, {:text => "/run_bot fast"}],
+          [{:text => "/run_bot !hanchan three"}, {:text => "/run_bot three"}],
+          [{:text => "/run_bot !hanchan three fast"}, {:text => "/run_bot three fast"}],
+          [{:text => "Я передумал"}]
+      ]
+      keyboard = {:keyboard => buttons, :one_time_keyboard => true, :selective => true}.to_json
+      send_message "Выберите кнопку для бота(порядок такой же, как и в флеш-клиенте).", keyboard: keyboard
+    else
+      send_message 'Бот уже ожидает/играет, к сожалению пока адекватно играть может только один бот.'
+    end
   end
 end

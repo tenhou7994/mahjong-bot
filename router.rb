@@ -12,6 +12,7 @@ class Router
   include Hints_mj
   include Users_mj
   include Help_mj
+  include Bot_mj
 
   def initialize(db)
     @db = db
@@ -26,11 +27,38 @@ class Router
     end
   end
 
+  def route_callback(query)
+    @chat = query['message']['chat']
+    @user = query['from']
+    case query['data']
+      when "approved_bot"
+        if @user['id'] != @timer_bot.owner_id
+          @timer_bot.edit_approve "Бот ожидает начала игры."
+          @timer_bot.exit
+          @timer_bot = nil
+          add_bot
+        end
+      when "canceled_bot"
+        if @user['id'] == @timer_bot.owner_id or user_admin?
+          @timer_bot.edit_approve "Ожидание отменено."
+          @timer_bot.exit
+          @timer_bot = nil
+        else
+          send_message "Отменить запуск может админ или запустивший его пользователь."
+        end
+      else
+    end
+  end
+
   def route_message(message)
+    @message = message
     @logger.info "Incoming json: #{message}"
     @chat = message['chat']
     @user = message['from']
     @message_text = message['text']
+    if message['new_chat_member']
+      welcome
+    end
     case @message_text
       when /^\/hlon\s?$/
         set_highlights_on
@@ -76,6 +104,12 @@ class Router
 
       when /^\/help_admin(\s.+)?$/
         send_admin_help if user_admin?
+
+      when /^\/add_bot$/
+        send_bot_reply_keyboard
+
+      when /^\/run_bot\s?.*$/
+        add_bot_by_people
 
       when /^\/list$/
         get_users_from_db if user_admin?
@@ -161,12 +195,14 @@ class Router
     get_admins.include? @user['id']
   end
 
-  def send_message(text, chat: nil, formatted: nil)
+  def send_message(text, chat: nil, formatted: nil, keyboard: nil)
     chat ||= @chat['id']
     params_hash = {:chat_id => chat, :text => text, :disable_web_page_preview => 1}
     params_hash.merge!({:parse_mode => 'HTML'}) if formatted
-    RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
-                   {:params => params_hash}
+    params_hash.merge!({:reply_to_message_id => @message['message_id'], :reply_markup => keyboard}) if keyboard
+    resp = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
+                          {:params => params_hash}
+    (JSON.parse resp.body)['result']
   end
 
 end
@@ -190,4 +226,46 @@ class QueueFromThread < Thread
   rescue => err
     @router.logger.error err
   end
+end
+
+class BotTimerThread < Thread
+  attr_reader :owner_id
+
+  def initialize(time, user_id, chat_id)
+    @owner_id = user_id
+    @chat_id = chat_id
+    @possible = true
+    @time = time
+    super{ self.run }
+  end
+
+  def run
+    @possible = false
+    send_approve
+    sleep @time
+    @possible = true
+    edit_approve "Истекло время подтверждения запуска бота."
+  end
+
+  def send_approve
+    text = "Бот ожидает подтверждения другим участником."
+    markup = {:inline_keyboard => [[:text => 'Подтвердить запуск', :callback_data => 'approved_bot'],
+                                   [:text => 'Отменить запуск', :callback_data => 'canceled_bot']]}.to_json
+    params_hash = {:chat_id => @chat_id, :text => text, :disable_web_page_preview => 1, :reply_markup => markup}
+    resp = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
+                          {:params => params_hash}
+    @message_id = (JSON.parse resp.body)['result']['message_id']
+  end
+
+  def edit_approve(text)
+    markup = {:inline_markup => {}}.to_json
+    params_hash = {:chat_id => @chat_id, :text => text, :message_id => @message_id, :reply_markup => markup}
+    RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/editMessageText",
+                    {:params => params_hash}
+  end
+
+  def possible?
+    @possible
+  end
+
 end

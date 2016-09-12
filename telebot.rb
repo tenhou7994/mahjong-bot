@@ -22,8 +22,12 @@ class Teleserver < Sinatra::Application
 
   post CALLBACK_URL do
     update = JSON.parse request.body.read
-    message = update["message"].nil? ? update["edited_message"] : update["message"]
-    $router.route_message message
+    if update['callback_query']
+      $router.route_callback update['callback_query']
+    else
+      message = update["message"].nil? ? update["edited_message"] : update["message"]
+      $router.route_message message
+    end
     200
   end
 
