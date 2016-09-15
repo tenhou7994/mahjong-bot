@@ -33,7 +33,7 @@ module Links_mj
       @db.add_link id, link
     else
       id = id.lstrip.to_i
-      @db.add_link id, link, 'update'
+      @db.add_link id, link, update_type:'update'
     end
   end
 

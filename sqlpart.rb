@@ -114,7 +114,7 @@ class DBC
   end
 
   def get_link(id)
-    query = "select id from links where id=#{id};"
+    query = "select * from links where id=#{id};"
     @db.get_first_value query
   end
 
