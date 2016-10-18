@@ -281,7 +281,7 @@ module Bot_mj
       end
     end
 
-    button = 1 + (kuitan*2) + (no_aka*4) + (hanchan*8) + (threesome*16) + (fast*64)
+    button = 1 + (no_aka*2) + (kuitan*4) + (hanchan*8) + (threesome*16) + (fast*64)
     params_hash = {:lobby => lobby, :type => button, :name => 'ID582D7C90-ABf9JQAe'}
     resp = RestClient.get "http://mahjongbot.herokuapp.com/startBot", {:params => params_hash}
     @bot_id = (JSON.parse resp.body)['id']
