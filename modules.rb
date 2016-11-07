@@ -173,7 +173,7 @@ module Highlights_mj
       end
     end
     id = (send_message text)['message_id']
-    edit_message(id, text.split(/(\n|\r\n)/).compact.first)
+    edit_message(id, text.split(/(\n|\r\n)/).compact.first.to_s)
   end
 end
 
@@ -349,8 +349,9 @@ module Message_tg
     (JSON.parse resp.body)['result']
   end
 
-  def edit_message(id, text, keyboard: nil)
-    params_hash = {:chat_id => @chat_id, :text => text, :message_id => id}
+  def edit_message(id, text, chat:nil, keyboard: nil)
+    chat ||= @chat['id']
+    params_hash = {:chat_id => chat, :text => text, :message_id => id}
     params_hash.merge!({:reply_markup => keyboard}) if keyboard
     RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/editMessageText",
                    {:params => params_hash}

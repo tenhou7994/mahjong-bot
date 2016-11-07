@@ -244,12 +244,12 @@ class BotTimerThread < Thread
     text = "Бот ожидает подтверждения другим участником."
     keyboard = {:inline_keyboard => [[:text => 'Подтвердить запуск', :callback_data => 'approved_bot'],
                                    [:text => 'Отменить запуск', :callback_data => 'canceled_bot']]}.to_json
-    @message_id = (send_message(text, keyboard: keyboard))['message_id']
+    @message_id = (send_message(text, chat_id: @chat_id, keyboard: keyboard))['message_id']
   end
 
   def edit_approve(text)
     markup = {:inline_markup => {}}.to_json
-    edit_message @message_id, text, keyboard: markup
+    edit_message @message_id, text, chat_id: @chat_id, keyboard: markup
   end
 
   def possible?
