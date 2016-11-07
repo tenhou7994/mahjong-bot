@@ -259,7 +259,7 @@ class BotTimerThread < Thread
 end
 
 class LockThread < Thread
-  attr_reader :owner_id
+  attr_reader :owner_id, :chat_id
 
   def initialize(user_id, chat_id, &block)
     @owner_id = user_id
