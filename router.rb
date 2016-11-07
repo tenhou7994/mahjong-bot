@@ -13,6 +13,7 @@ class Router
   include Users_mj
   include Help_mj
   include Bot_mj
+  include Message_tg
 
   def initialize(db)
     @db = db
@@ -195,16 +196,6 @@ class Router
     get_admins.include? @user['id']
   end
 
-  def send_message(text, chat: nil, formatted: nil, keyboard: nil)
-    chat ||= @chat['id']
-    params_hash = {:chat_id => chat, :text => text, :disable_web_page_preview => 1}
-    params_hash.merge!({:parse_mode => 'HTML'}) if formatted
-    params_hash.merge!({:reply_to_message_id => @message['message_id'], :reply_markup => keyboard}) if keyboard
-    resp = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
-                          {:params => params_hash}
-    (JSON.parse resp.body)['result']
-  end
-
 end
 
 class QueueFromThread < Thread
@@ -231,6 +222,8 @@ end
 class BotTimerThread < Thread
   attr_reader :owner_id
 
+  include Message_tg
+
   def initialize(time, user_id, chat_id)
     @owner_id = user_id
     @chat_id = chat_id
@@ -249,19 +242,14 @@ class BotTimerThread < Thread
 
   def send_approve
     text = "Бот ожидает подтверждения другим участником."
-    markup = {:inline_keyboard => [[:text => 'Подтвердить запуск', :callback_data => 'approved_bot'],
+    keyboard = {:inline_keyboard => [[:text => 'Подтвердить запуск', :callback_data => 'approved_bot'],
                                    [:text => 'Отменить запуск', :callback_data => 'canceled_bot']]}.to_json
-    params_hash = {:chat_id => @chat_id, :text => text, :disable_web_page_preview => 1, :reply_markup => markup}
-    resp = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
-                          {:params => params_hash}
-    @message_id = (JSON.parse resp.body)['result']['message_id']
+    @message_id = (send_message(text, keyboard: keyboard))['message_id']
   end
 
   def edit_approve(text)
     markup = {:inline_markup => {}}.to_json
-    params_hash = {:chat_id => @chat_id, :text => text, :message_id => @message_id, :reply_markup => markup}
-    RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/editMessageText",
-                    {:params => params_hash}
+    edit_message @message_id, text, keyboard: markup
   end
 
   def possible?

@@ -172,7 +172,8 @@ module Highlights_mj
         text += "@#{row[0]} | "
       end
     end
-    send_message text
+    id = (send_message text)['message_id']
+    edit_message(id, text.split(/(\n|\r\n)/).compact.first)
   end
 end
 
@@ -332,5 +333,26 @@ module Bot_mj
     else
       send_message 'Бот уже ожидает/играет, к сожалению пока адекватно играть может только один бот.'
     end
+  end
+end
+
+module Message_tg
+  def send_message(text, chat: nil, formatted: nil, keyboard: nil, keyboard_type: 'inline')
+    chat ||= @chat['id']
+    params_hash = {:chat_id => chat, :text => text, :disable_web_page_preview => 1}
+    params_hash.merge!({:parse_mode => 'HTML'}) if formatted
+    params_hash.merge!({:reply_to_message_id => @message['message_id']}) if keyboard_type=='reply'
+    params_hash.merge!({:reply_markup => keyboard}) if keyboard
+
+    resp = RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/sendMessage",
+                          {:params => params_hash}
+    (JSON.parse resp.body)['result']
+  end
+
+  def edit_message(id, text, keyboard: nil)
+    params_hash = {:chat_id => @chat_id, :text => text, :message_id => id}
+    params_hash.merge!({:reply_markup => keyboard}) if keyboard
+    RestClient.get "https://api.telegram.org/bot#{BOT_TOKEN}/editMessageText",
+                   {:params => params_hash}
   end
 end
