@@ -172,8 +172,15 @@ module Highlights_mj
         text += "@#{row[0]} | "
       end
     end
-    id = (send_message text)['message_id']
-    edit_message(id, text.split(/(\n|\r\n)/).compact.first.to_s)
+    if @cta.nil?
+      @cta = LockThread.new(@user['id'], @chat['id']) do
+        id = (send_message text)['message_id']
+        sleep 10
+        edit_message(id, text.split(/(\n|\r\n)/).compact.first.to_s)
+      end
+    elsif @cta.possible?
+      @cta.run
+    end
   end
 end
 

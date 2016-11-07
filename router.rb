@@ -257,3 +257,26 @@ class BotTimerThread < Thread
   end
 
 end
+
+class LockThread < Thread
+  attr_reader :owner_id
+
+  def initialize(user_id, chat_id, &block)
+    @owner_id = user_id
+    @chat_id = chat_id
+    @possible = true
+    @block = block
+    super{ self.run }
+  end
+
+  def run
+    @possible = false
+    @block.call
+    @possible = true
+  end
+
+  def possible?
+    @possible
+  end
+
+end
